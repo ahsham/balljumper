@@ -1,0 +1,548 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Jumping Ball Runner — Bot Rival Mode</title>
+<style>
+  :root{
+    --sky-top:#8fd3ff;
+    --sky-mid:#bfeaff;
+    --sky-bot:#e9f7ff;
+    --ink:#0a2239;
+    --accent:#ff4d85;
+    --grass:#2ecc71;
+    --btn:#ffffffdd;
+    --bot:#4d8bff;
+    --boost:#ffd34d;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%;margin:0}
+  body{
+    background: linear-gradient(var(--sky-top), var(--sky-mid) 55%, var(--sky-bot));
+    font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+    color:var(--ink);
+    overflow:hidden;
+  }
+  #game{ position:fixed; inset:0; display:grid; place-items:center; }
+  canvas{ width:100vw; height:100vh; display:block }
+  .hud{
+    position:fixed; left:0; right:0; top:0;
+    padding:10px 14px;
+    display:flex; gap:12px; align-items:center; justify-content:space-between;
+    font-weight:700; text-shadow:0 2px 0 #ffffff80;
+    pointer-events:none;
+  }
+  .left, .right { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+  .badge{
+    background:#ffffffcc; padding:6px 10px; border-radius:999px;
+    box-shadow:0 6px 20px #00000014;
+  }
+  .progress{
+    --w:260px;
+    width:var(--w); height:12px; border-radius:999px; background:#ffffffbb; overflow:hidden;
+    box-shadow: inset 0 2px 5px #0001; position:relative;
+  }
+  .bar{ height:100%; width:0%; background:linear-gradient(90deg, #7fd36e, #2ecc71); }
+  .botmarker{ position:absolute; top:0; width:3px; height:100%; background:var(--bot); box-shadow:0 0 0 2px #ffffff80 inset; }
+  .controls{ position:fixed; right:10px; bottom:10px; display:flex; gap:10px; }
+  button{
+    pointer-events:auto;
+    appearance:none; border:0; border-radius:14px; padding:10px 14px; font-weight:700;
+    background:var(--btn); color:var(--ink); box-shadow:0 10px 24px #0000001a, inset 0 -2px 0 #0000000d;
+    cursor:pointer; transition:transform .05s ease, filter .2s ease;
+  }
+  button:hover{filter:brightness(1.05)}
+  button:active{transform:translateY(1px)}
+  .overlay{ position:fixed; inset:0; display:grid; place-items:center; background:linear-gradient(#00000010, #00000015); backdrop-filter:saturate(120%) blur(2px); }
+  .card{ background:#fff; padding:26px 24px; border-radius:18px; box-shadow:0 25px 60px #00000025; max-width:min(92vw, 860px); text-align:left; }
+  .title{font-size:clamp(28px, 4.5vw, 42px); margin:0 0 6px 0; letter-spacing:.5px}
+  .subtitle{margin:0 0 16px 0; opacity:.75}
+  .instructions{ display:grid; grid-template-columns: 24px 1fr; gap:10px 12px; margin:12px 0 4px; }
+  .instructions span.emoji{ font-size:20px; line-height:24px; }
+  .keys{display:flex; align-items:center; gap:12px; margin:12px 0 8px}
+  .key{ background:#fafafa; border:2px solid #eee; padding:6px 10px; border-radius:10px; box-shadow:inset 0 -2px 0 #0000000d; font-weight:800;}
+  .note{ font-size:13px; opacity:.7; margin-top:10px }
+  .hidden{display:none}
+  .toast { position: fixed; top: 60px; left: 50%; transform: translateX(-50%); background: #333; color: white; padding: 8px 16px; border-radius: 20px; font-weight: 600; z-index: 1000; opacity: 0; transition: opacity 0.25s; }
+</style>
+</head>
+<body>
+<div id="game">
+  <canvas id="canvas" aria-label="Jumping Ball Runner"></canvas>
+</div>
+
+<div class="hud" aria-live="polite">
+  <div class="left">
+    <div class="badge" id="score">Score: 0</div>
+    <div class="badge" id="level">Level 1</div>
+    <div class="badge" id="hearts">❤️❤️❤️</div>
+    <div class="badge" id="rival">Bot: —</div>
+  </div>
+  <div class="right">
+    <div class="badge" id="speed">Speed: 1.0x</div>
+    <div class="badge" id="flow">Flow: 0%</div>
+    <div class="badge" id="boost">⚡ Boost: —</div>
+    <div class="badge" id="nitro">NOS: 100%</div>
+    <div class="badge" id="bonus">Lead Bonus: 0%</div>
+    <div class="badge" id="best">Best: 0</div>
+    <div class="progress" aria-label="Level progress">
+      <div class="bar" id="progressBar"></div>
+      <div class="botmarker" id="botMarker" style="left:0"></div>
+    </div>
+  </div>
+</div>
+
+<div class="controls">
+  <button id="muteBtn" title="Mute (M)">🔊 Sound</button>
+  <button id="pauseBtn" title="Pause (P)">⏸ Pause</button>
+  <button id="retryBtn" class="hidden" title="Retry (R)">↻ Retry</button>
+</div>
+
+<div class="overlay" id="menu">
+  <div class="card">
+    <h1 class="title">🎌 Jumping Ball Runner — Bot Rival</h1>
+    <p class="subtitle">Race a bot. Build <b>Flow</b>, grab ⚡ boosts, and hold <b>→</b> for NOS!</p>
+    <div class="instructions">
+      <span class="emoji">🕹️</span><div>Jump: <b>Space</b> / <b>↑</b> / Tap</div>
+      <span class="emoji">➡️</span><div><b>Hold Right Arrow</b> (or <b>D</b>) for NOS burst. Drains, then refills.</div>
+      <span class="emoji">🤖</span><div>Bot: from behind it nudges you forward; from the front it shoves you back.</div>
+      <span class="emoji">💥</span><div>Hit obstacle w/o shield: you lose a life and the <b>bot surges ahead</b>.</div>
+      <span class="emoji">🌊</span><div><b>Flow</b>: clean play auto-accelerates up to +35%. Hits break flow.</div>
+      <span class="emoji">⚡</span><div><b>Boost pickup</b>: +35% speed for 3s. Stacks with Flow, NOS & lead bonus.</div>
+      <span class="emoji">🪙</span><div>Coins: +100 points each.</div>
+      <span class="emoji">🛡️</span><div>Shield: smash one obstacle for <b>+2000</b>.</div>
+      <span class="emoji">❤️</span><div>Hearts: +1 life (max 5). Hitting obstacle with no shield costs a heart.</div>
+      <span class="emoji">⏸️</span><div>Pause: press <b>P</b>.</div>
+    </div>
+    <div class="keys">
+      <span class="key">Space</span><span class="key">↑</span><span class="key">→ / D (NOS)</span><span class="key">Click / Tap</span>
+    </div>
+    <button id="playBtn" style="font-size:18px">▶&nbsp; Play</button>
+    <p class="note">Progress (level, lives, best) is saved on this device.</p>
+  </div>
+</div>
+
+<div class="overlay hidden" id="levelclear">
+  <div class="card" style="text-align:center">
+    <h2 class="title" style="margin-bottom:6px">🎉 Level Complete!</h2>
+    <p class="subtitle" id="clearStats">Nice run.</p>
+    <button id="nextBtn" style="font-size:18px">➡️ Next Level</button>
+  </div>
+</div>
+
+<div class="overlay hidden" id="gameover">
+  <div class="card" style="text-align:center">
+    <h2 class="title" style="margin-bottom:6px">💥 Game Over</h2>
+    <p class="subtitle" id="finalStats">Try again?</p>
+    <button id="againBtn" style="font-size:18px">↻&nbsp; Restart</button>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+/* === Canvas & basics === */
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+const dpr = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
+let W=0, H=0;
+
+function resize(){
+  W = Math.round(window.innerWidth * dpr);
+  H = Math.round(window.innerHeight * dpr);
+  canvas.width = W; canvas.height = H;
+  groundY = Math.round(H*0.78);
+}
+window.addEventListener('resize', resize);
+
+/* === UI === */
+const scoreEl = document.getElementById('score');
+const levelEl = document.getElementById('level');
+const heartsEl = document.getElementById('hearts');
+const speedEl = document.getElementById('speed');
+const bestEl = document.getElementById('best');
+const progressBar = document.getElementById('progressBar');
+const botMarker = document.getElementById('botMarker');
+const rivalEl = document.getElementById('rival');
+const bonusEl = document.getElementById('bonus');
+const flowEl = document.getElementById('flow');
+const boostEl = document.getElementById('boost');
+const nitroEl = document.getElementById('nitro');
+
+const menu = document.getElementById('menu');
+const levelclear = document.getElementById('levelclear');
+const gameover = document.getElementById('gameover');
+const clearStats = document.getElementById('clearStats');
+const finalStats = document.getElementById('finalStats');
+
+const playBtn = document.getElementById('playBtn');
+const nextBtn = document.getElementById('nextBtn');
+const againBtn = document.getElementById('againBtn');
+const retryBtn = document.getElementById('retryBtn');
+const muteBtn = document.getElementById('muteBtn');
+const pauseBtn = document.getElementById('pauseBtn');
+const toast = document.getElementById('toast');
+
+/* === Audio === */
+let audioMuted=false;
+const audio = {
+  ctx:null,
+  ensure(){ if(!this.ctx) this.ctx=new (window.AudioContext||window.webkitAudioContext)(); },
+  beep(f=600,d=0.08,v=0.15){ if(audioMuted) return; this.ensure(); const t=this.ctx.currentTime;
+    const o=this.ctx.createOscillator(), g=this.ctx.createGain();
+    o.frequency.setValueAtTime(f,t); g.gain.setValueAtTime(v,t); g.gain.exponentialRampToValueAtTime(0.01,t+d);
+    o.connect(g).connect(this.ctx.destination); o.start(t); o.stop(t+d);
+  },
+  slide(s=200,e=900,d=0.25,v=0.12){ if(audioMuted) return; this.ensure(); const t=this.ctx.currentTime;
+    const o=this.ctx.createOscillator(), g=this.ctx.createGain(); g.gain.value=v;
+    o.frequency.setValueAtTime(s,t); o.frequency.exponentialRampToValueAtTime(e,t+d);
+    o.connect(g).connect(this.ctx.destination); o.start(t); o.stop(t+d);
+  },
+  thud(){ if(audioMuted) return; this.ensure(); const t=this.ctx.currentTime;
+    const o=this.ctx.createOscillator(), g=this.ctx.createGain(); o.type='square';
+    o.frequency.setValueAtTime(80,t); g.gain.setValueAtTime(0.2,t); g.gain.exponentialRampToValueAtTime(0.01,t+0.3);
+    o.connect(g).connect(this.ctx.destination); o.start(t); o.stop(t+0.3);
+  }
+};
+
+/* === Store (persist progress) === */
+const store = {
+  get level(){ return +localStorage.getItem('jbr_level') || 1; },
+  set level(v){ localStorage.setItem('jbr_level', String(v)); },
+  get hearts(){ return +localStorage.getItem('jbr_hearts') || 3; },
+  set hearts(v){ localStorage.setItem('jbr_hearts', String(Math.max(0,Math.min(5,v)))); },
+  get best(){ return +localStorage.getItem('jbr_best') || 0; },
+  set best(v){ localStorage.setItem('jbr_best', String(v)); },
+};
+
+/* === Game config/state === */
+let state = 'menu'; // menu | playing | clear | over
+let groundY = 0;
+let paused = false;
+
+let level = store.level;
+let lives = store.hearts;
+let score = 0;
+let best = store.best;
+
+const BASE_LENGTH = 5000; // px
+const LENGTH_PER_LEVEL = 900;
+const BASE_SPEED = 260;
+const SPEED_PER_LEVEL = 20;
+const MAX_SPEED = 900;
+
+let worldX = 0;        // player's world progress
+let worldLength = 0;   // level size
+let worldSpeed = BASE_SPEED;
+const obstacles = [];
+const coins = [];
+const powerups = []; // shield, heart, boost
+const particles = [];
+
+let shieldTime = 0; // seconds left
+let invincTime = 0; // brief invulnerability after losing a life
+let shake = 0;
+
+// Flow, boosts, and NOS
+let flow = 0; // 0..1
+const FLOW_RATE = 0.06;       // build rate per second
+const FLOW_MAX_BOOST = 0.35;  // +35% at max flow
+let boostTime = 0;            // seconds left of speed boost
+const BOOST_MULT = 1.35;      // +35% during boost
+let nitro = 1;                // 0..1
+const NITRO_DRAIN = 0.45;     // /s while held
+const NITRO_REGEN = 0.25;     // /s when not held
+const NITRO_MULT = 1.6;       // +60% while held
+let nitroPressed = false;
+
+/* === Bot rival === */
+const bot = {
+  wx: 0,
+  vy: 0,
+  y: 0,
+  r: 22,
+  onGround: false,
+  rubber: 0.16,   // keeps pressure on
+  jumpCooldown: 0,
+  update(dt){
+    // Match player's effective speed with rubber-banding on gap
+    const lead = (worldX - this.wx);
+    const accel = this.rubber * (lead);
+    const targetSpeed = Math.max(80, Math.min(MAX_SPEED*1.15, currentEffectiveSpeed() + accel));
+    this.wx += targetSpeed * dt;
+
+    // gravity & ground
+    this.vy += 2000*dt; this.y += this.vy*dt;
+    if(this.y + this.r >= groundY){ this.y = groundY - this.r; this.vy=0; this.onGround=true; } else { this.onGround=false; }
+
+    // look-ahead jump
+    this.jumpCooldown = Math.max(0, this.jumpCooldown - dt);
+    const lookAhead = 180;
+    for(const o of obstacles){ if(o.x > this.wx && o.x - this.wx < lookAhead){ if(this.onGround && this.jumpCooldown<=0){ this.vy = -740; this.onGround=false; this.jumpCooldown=0.18; } break; } }
+  },
+  draw(){
+    const x = toScreenX(this.wx);
+    ctx.save();
+    const shadowY = groundY + 6, air = Math.max(0, groundY - (this.y+this.r)), shw = Math.max(10, 28 - air*0.08);
+    ctx.globalAlpha = 0.22; ctx.fillStyle='#000'; ctx.beginPath(); ctx.ellipse(x,shadowY,shw,shw*0.38,0,0,Math.PI*2); ctx.fill();
+    ctx.restore();
+    const r=this.r; const g = ctx.createRadialGradient(x-r*0.3, this.y-r*0.4, r*0.1, x, this.y, r);
+    g.addColorStop(0,'#c9d8ff'); g.addColorStop(1,'#4d8bff');
+    ctx.fillStyle=g; ctx.beginPath(); ctx.arc(x,this.y,r,0,Math.PI*2); ctx.fill();
+    ctx.fillStyle='rgba(255,255,255,0.55)'; ctx.beginPath(); ctx.ellipse(x-r*0.2, this.y-r*0.35, r*0.35, r*0.25, -0.5, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle='#112'; ctx.beginPath(); ctx.arc(x-r*0.26, this.y-r*0.18, r*0.13, 0, Math.PI*2); ctx.fill(); ctx.beginPath(); ctx.arc(x+r*0.26, this.y-r*0.18, r*0.13, 0, Math.PI*2); ctx.fill();
+  }
+};
+
+/* === RNG === */
+function RNG(seed){ let s = seed >>> 0; return function(){ s = (1664525 * s + 1013904223) >>> 0; return (s & 0xfffffff) / 0xfffffff; }}
+
+/* === Player === */
+const player = {
+  x: 160, y:0, vy:0, r:24,
+  onGround:false, squash:0,
+  update(dt){
+    this.vy += 2000*dt; this.y += this.vy*dt;
+    if(this.y + this.r >= groundY){ if(!this.onGround && this.vy>200){ audio.beep(200,0.06,0.08); makeDust(this.x, groundY); } this.y = groundY - this.r; this.vy=0; this.onGround=true; } else { this.onGround=false; }
+    if(this.onGround && this.vy===0){ this.squash = Math.min(0.25, this.squash + 4*dt); }
+    this.squash = Math.max(0, this.squash - 2*dt);
+  },
+  jump(){ if (this.onGround) { this.vy = -750; this.onGround = false; this.squash=0.2; audio.beep(680, 0.1); audio.beep(700,0.08,0.15); this.createParticles?.(3, '#ffffff'); } },
+  draw(){
+    const x=this.x, y=this.y, r=this.r;
+    ctx.save(); const shadowY = groundY + 6, air = Math.max(0, groundY - (y+r)), shw = Math.max(10, 30 - air*0.08); ctx.globalAlpha = 0.25; ctx.fillStyle='#000'; ctx.beginPath(); ctx.ellipse(x,shadowY,shw,shw*0.38,0,0,Math.PI*2); ctx.fill(); ctx.restore();
+    ctx.save(); ctx.translate(x,y); ctx.scale(1+this.squash*0.15, 1-this.squash*0.2); ctx.translate(-x,-y);
+    const g = ctx.createRadialGradient(x-r*0.3, y-r*0.4, r*0.1, x, y, r); g.addColorStop(0,'#ffc0d4'); g.addColorStop(1,'#ff4d85'); ctx.fillStyle=g; ctx.beginPath(); ctx.arc(x,y,r,0,Math.PI*2); ctx.fill();
+    ctx.fillStyle='rgba(255,255,255,0.5)'; ctx.beginPath(); ctx.ellipse(x-r*0.2, y-r*0.35, r*0.35, r*0.25, -0.5, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle='#1c153b'; ctx.beginPath(); ctx.arc(x-r*0.28, y-r*0.18, r*0.14, 0, Math.PI*2); ctx.fill(); ctx.beginPath(); ctx.arc(x+r*0.28, y-r*0.18, r*0.14, 0, Math.PI*2); ctx.fill();
+    if(shieldTime>0){ ctx.strokeStyle='rgba(120,200,255,0.7)'; ctx.lineWidth=4; ctx.beginPath(); ctx.arc(x,y,r+6,0,Math.PI*2); ctx.stroke(); }
+    if(invincTime>0){ ctx.strokeStyle='rgba(255,230,0,0.8)'; ctx.lineWidth=3; ctx.beginPath(); ctx.arc(x,y,r+10,0,Math.PI*2); ctx.stroke(); }
+    ctx.restore();
+  }
+};
+
+/* === World art === */
+function drawBackground(){ const hillBase = groundY - 70*dpr; ctx.fillStyle = '#7bd867'; for(let i=-3;i<5;i++){ const cx = (i*W/2) - (worldX*0.4 % (W/2)); ctx.beginPath(); ctx.arc(cx + W/4, hillBase, 140*dpr, Math.PI, 0); ctx.rect(cx, hillBase, W/2, H-hillBase); ctx.fill(); } ctx.fillStyle='#39c172'; ctx.fillRect(0, groundY, W, H-groundY); ctx.fillStyle='#1faa5d'; ctx.fillRect(0, groundY-6*dpr, W, 6*dpr); }
+
+/* === Particles === */
+function makeDust(x, y){ for(let i=0;i<6;i++){ particles.push({x, y, vx:(Math.random()-0.5)*160, vy:-Math.random()*140, life:0.5, max:0.5, color:'#2ecc71', size:3}); }}
+function updateParticles(dt){ for(let i=particles.length-1;i>=0;i--){ const p = particles[i]; p.x += p.vx*dt; p.y += p.vy*dt; p.vy += 600*dt; p.life -= dt; if(p.life<=0) particles.splice(i,1); }}
+function drawParticles(){ for(const p of particles){ ctx.save(); ctx.globalAlpha = p.life/p.max; ctx.fillStyle=p.color; ctx.beginPath(); ctx.arc(p.x, p.y, p.size, 0, Math.PI*2); ctx.fill(); ctx.restore(); }}
+
+/* === Objects === */
+function drawCoin(c){ ctx.save(); const pulse = 0.9 + 0.1*Math.sin(performance.now()/120); ctx.fillStyle='#ffd34d'; ctx.beginPath(); ctx.arc(toScreenX(c.x), c.y, c.r*pulse, 0, Math.PI*2); ctx.fill(); ctx.strokeStyle='#ad7d00'; ctx.lineWidth=2; ctx.stroke(); ctx.restore(); }
+function drawObstacle(o){ const x = toScreenX(o.x), y=groundY, w=o.w, h=o.h; ctx.fillStyle=o.color; ctx.fillRect(x, y-h, w, h); ctx.strokeStyle='rgba(0,0,0,0.2)'; ctx.lineWidth=2; ctx.strokeRect(x, y-h, w, h); }
+function drawPowerup(p){ const x = toScreenX(p.x); if(p.t==='shield'){ ctx.strokeStyle='rgba(120,200,255,0.9)'; ctx.lineWidth=3; ctx.beginPath(); ctx.arc(x, p.y, p.r, 0, Math.PI*2); ctx.stroke(); } else if(p.t==='heart'){ ctx.fillStyle='#ff5a77'; ctx.beginPath(); const r=p.r; ctx.moveTo(x, p.y); ctx.bezierCurveTo(x-r, p.y-r, x-2*r, p.y+r*0.2, x, p.y+r*1.4); ctx.bezierCurveTo(x+2*r, p.y+r*0.2, x+r, p.y-r, x, p.y); ctx.fill(); } else if(p.t==='boost'){ ctx.save(); ctx.fillStyle='var(--boost)'; ctx.beginPath(); ctx.moveTo(x-6,p.y-12); ctx.lineTo(x+2,p.y-2); ctx.lineTo(x-1,p.y-2); ctx.lineTo(x+6,p.y+10); ctx.lineTo(x-2,p.y+1); ctx.lineTo(x+1,p.y+1); ctx.closePath(); ctx.fill(); ctx.restore(); }}
+function drawFlag(){ const fx = toScreenX(worldLength); const y=groundY; ctx.fillStyle='#8b5a2b'; ctx.fillRect(fx, y-120, 10, 120); ctx.fillStyle='#ffdd57'; ctx.beginPath(); ctx.moveTo(fx+10, y-110); ctx.lineTo(fx+90, y-90); ctx.lineTo(fx+10, y-70); ctx.closePath(); ctx.fill(); }
+
+/* === Collision helpers === */
+function circleHit(ax,ay,ar,bx,by,br){ const dx=ax-bx, dy=ay-by; return (dx*dx+dy*dy) <= (ar+br)*(ar+br); }
+function rectHitCircle(cx, cy, r, rx, ry, rw, rh){ const tx = Math.max(rx, Math.min(cx, rx+rw)); const ty = Math.max(ry, Math.min(cy, ry+rh)); const dx = cx - tx, dy = cy - ty; return dx*dx + dy*dy <= r*r; }
+
+/* === Level generation === */
+function generateLevel(n){
+  worldLength = BASE_LENGTH + (n-1)*LENGTH_PER_LEVEL;
+  worldSpeed = Math.min(MAX_SPEED, BASE_SPEED + (n-1)*SPEED_PER_LEVEL);
+  const rng = RNG(n*1337 + 12345);
+  obstacles.length=0; coins.length=0; powerups.length=0;
+  let x = 600;
+  while(x < worldLength - 600){
+    const gap = 350 + rng()*350;
+    const w = 30 + rng()*30;
+    const h = 30 + rng()*70;
+    obstacles.push({ x, w, h, color:`hsl(${Math.floor(rng()*360)},70%,55%)` });
+    if(rng()<0.75){ for(let i=0;i<3+Math.floor(rng()*3);i++){ coins.push({ x: x + 80 + i*26, y: groundY - 90 - rng()*60, r: 10 }); } }
+    if(rng()<0.18){ powerups.push({ x: x + 140 + rng()*120, y: groundY - 110 - rng()*60, r: 16, t:'shield' }); }
+    else if(rng()<0.14){ powerups.push({ x: x + 140 + rng()*120, y: groundY - 110 - rng()*60, r: 12, t:'heart' }); }
+    else if(rng()<0.22){ powerups.push({ x: x + 120 + rng()*140, y: groundY - 120 - rng()*60, r: 12, t:'boost' }); }
+    x += gap;
+  }
+}
+
+/* === World <-> Screen === */
+function toScreenX(wx){ return Math.round((wx - worldX) * dpr + player.x); }
+
+/* === HUD === */
+let leadBonus=0; // 0..0.20
+function updateHUD(){
+  const speedMul = speedMultiplier();
+  scoreEl.textContent = 'Score: ' + Math.floor(score).toLocaleString();
+  levelEl.textContent = 'Level ' + level;
+  heartsEl.textContent = '❤️'.repeat(lives) + '🤍'.repeat(Math.max(0, 5 - lives));
+  speedEl.textContent = 'Speed: ' + ( (worldSpeed/BASE_SPEED) * speedMul ).toFixed(2) + 'x';
+  flowEl.textContent = 'Flow: ' + Math.round(flow * 100) + '%';
+  boostEl.textContent = '⚡ Boost: ' + (boostTime>0 ? boostTime.toFixed(1)+'s' : '—');
+  nitroEl.textContent = 'NOS: ' + Math.round(nitro*100) + '%';
+  best = Math.max(best, Math.floor(score)); bestEl.textContent = 'Best: ' + best.toLocaleString();
+  const prog = Math.max(0, Math.min(1, worldX / worldLength));
+  progressBar.style.width = (prog*100).toFixed(1) + '%';
+  const botProg = Math.max(0, Math.min(1, bot.wx / worldLength));
+  botMarker.style.left = `calc(${(botProg*100).toFixed(1)}% - 1px)`;
+  const ahead = (worldX - bot.wx) > 0;
+  rivalEl.textContent = 'Bot: ' + (ahead ? '⬅️ behind' : '➡️ ahead');
+  bonusEl.textContent = 'Lead Bonus: ' + Math.round(leadBonus*100) + '%';
+}
+
+/* === Toast === */
+function showToast(msg){ toast.textContent = msg; toast.style.opacity='1'; setTimeout(()=>{ toast.style.opacity='0'; }, 1700); }
+
+/* === Life & hit handling === */
+function hitObstacle(i){
+  const o = obstacles[i];
+  if(shieldTime > 0){
+    obstacles.splice(i,1); shieldTime = 0; score += 2000; audio.slide(300,1200,0.2,0.1); showToast('+2000 (Shield Smash!)');
+    for(let j=0;j<10;j++){ particles.push({x:toScreenX(o.x), y:groundY-o.h/2, vx:(Math.random()-0.5)*300, vy:(Math.random()-0.5)*300, life:0.6, max:0.6, color:o.color, size:4}); }
+  } else if(invincTime <= 0){
+    lives -= 1; store.hearts = lives; audio.thud(); showToast('Ouch! -1 ❤️'); invincTime = 1.2; shake = 10; flow = 0;
+    // on mistake: bot surges ahead, and you get pulled slightly back
+    bot.wx = Math.min(worldLength-10, bot.wx + 260);
+    worldX = Math.max(0, worldX - 180);
+    showToast('🤖 Bot surged ahead!');
+    if(lives <= 0){ gameOver(); }
+  }
+}
+
+/* === Game flow === */
+function resetRun(){
+  worldX = 0; score = 0; shieldTime = 0; invincTime=0; shake=0; leadBonus=0; flow=0; boostTime=0; nitro=1; nitroPressed=false;
+  bot.wx = -160; bot.y = groundY - bot.r; bot.vy=0;
+  generateLevel(level);
+  updateHUD();
+}
+function start(){ state='playing'; paused=false; menu.classList.add('hidden'); levelclear.classList.add('hidden'); gameover.classList.add('hidden'); retryBtn.classList.add('hidden'); resetRun(); }
+function completeLevel(){ state='clear'; levelclear.classList.remove('hidden'); retryBtn.classList.remove('hidden'); const leadMeters = Math.max(0, worldX - bot.wx); const finishBonus = Math.round(leadMeters * 0.2); score += finishBonus; best = Math.max(best, Math.floor(score)); clearStats.textContent = `Level ${level} cleared! Score: ${Math.floor(score).toLocaleString()} (+${finishBonus} lead bonus)`; level += 1; store.level = level; store.hearts = lives; store.best = best; }
+function gameOver(){ state='over'; gameover.classList.remove('hidden'); retryBtn.classList.remove('hidden'); finalStats.textContent = `You reached Level ${level}. Best: ${best.toLocaleString()}`; lives = 3; store.hearts = lives; store.best = best; }
+
+/* === Input === */
+function handleJump(){ if(paused) return; if(state==='menu') start(); else if(state==='playing') player.jump(); }
+window.addEventListener('keydown', (e)=>{
+  if(e.code==='Space' || e.code==='ArrowUp'){ e.preventDefault(); handleJump(); }
+  if(e.code==='ArrowRight' || e.code==='KeyD'){ nitroPressed = true; }
+  if(e.code==='KeyR'){ if(state!=='playing'){ start(); } }
+  if(e.code==='KeyM'){ toggleMute(); }
+  if(e.code==='KeyP'){ setPaused(!paused); }
+});
+window.addEventListener('keyup', (e)=>{ if(e.code==='ArrowRight' || e.code==='KeyD'){ nitroPressed = false; }});
+canvas.addEventListener('pointerdown', (e)=>{ if(e.target.closest('button')) return; handleJump(); });
+
+function toggleMute(){ audioMuted=!audioMuted; muteBtn.textContent = audioMuted?'🔈 Muted':'🔊 Sound'; }
+function setPaused(p){ if(state!=='playing') return; paused=p; pauseBtn.textContent = paused ? '▶ Resume' : '⏸ Pause'; last = performance.now(); }
+
+muteBtn.addEventListener('click', toggleMute);
+pauseBtn.addEventListener('click', ()=> setPaused(!paused));
+playBtn.addEventListener('click', start);
+nextBtn.addEventListener('click', ()=>{ start(); });
+againBtn.addEventListener('click', ()=>{ level = 1; store.level = level; lives = 3; store.hearts = lives; start(); });
+retryBtn.addEventListener('click', ()=>{ start(); });
+
+window.addEventListener('beforeunload', (e)=>{ if(state==='playing' && !paused){ e.preventDefault(); e.returnValue=''; }});
+
+/* === Speed helpers === */
+function speedMultiplier(){
+  const leadMul = 1 + leadBonus;               // up to +20%
+  const flowMul = 1 + flow*FLOW_MAX_BOOST;     // up to +35%
+  const boostMul = boostTime>0 ? BOOST_MULT : 1; // +35%
+  const nitroMul = (nitroPressed && nitro>0) ? NITRO_MULT : 1; // +60%
+  return leadMul * flowMul * boostMul * nitroMul;
+}
+function currentEffectiveSpeed(){ return worldSpeed * speedMultiplier(); }
+
+/* === Main loop === */
+let last = performance.now();
+function frame(t){
+  const dt = Math.min(0.033, (t - last)/1000); last = t;
+  ctx.save(); if(shake>0){ ctx.translate((Math.random()*2-1)*shake, (Math.random()*2-1)*shake); shake*=0.85; }
+  ctx.clearRect(0,0,W,H);
+  drawBackground(); drawFlag();
+
+  if(state==='playing' && !paused){
+    // NOS resource update
+    if(nitroPressed && nitro>0){ nitro = Math.max(0, nitro - NITRO_DRAIN*dt); if(nitro===0) nitroPressed=false; }
+    else { nitro = Math.min(1, nitro + NITRO_REGEN*dt); }
+
+    // Build/decay flow
+    flow = Math.max(0, Math.min(1, flow + FLOW_RATE*dt));
+
+    // Progress
+    const effSpeed = currentEffectiveSpeed();
+    worldX += effSpeed * dt;
+    if(worldX >= worldLength - 40){ completeLevel(); }
+
+    // Update entities
+    player.update(dt); bot.update(dt);
+
+    // Bot-player bump interactions
+    const botX = toScreenX(bot.wx);
+    const overlap = (player.r + bot.r) - Math.abs(botX - player.x);
+    if(overlap > 0){
+      if(botX < player.x){ // behind -> push forward
+        const push = 150 * dt * (1 + flow);
+        worldX += push; score += 2; audio.beep(300,0.03,0.06);
+      } else { // front -> push back
+        const push = 220 * dt; worldX = Math.max(0, worldX - push); flow = Math.max(0, flow - 0.15); shake = Math.max(shake, 6); audio.thud();
+      }
+    }
+
+    // Timers
+    if(shieldTime>0) shieldTime -= dt; if(invincTime>0) invincTime -= dt; if(boostTime>0) boostTime -= dt;
+
+    // Obstacles
+    for(let i=obstacles.length-1;i>=0;i--){
+      const o = obstacles[i]; const sx = toScreenX(o.x);
+      if(sx < -100) { obstacles.splice(i,1); continue; }
+      const hit = rectHitCircle(player.x, player.y, player.r*0.9, sx, groundY-o.h, o.w, o.h);
+      if(hit){ hitObstacle(i); }
+    }
+
+    // Coins
+    for(let i=coins.length-1;i>=0;i--){
+      const c = coins[i]; const sx = toScreenX(c.x);
+      if(sx < -60) { coins.splice(i,1); continue; }
+      if(circleHit(player.x, player.y, player.r, sx, c.y, c.r)){
+        coins.splice(i,1); score += 100; audio.beep(900,0.06,0.14);
+        particles.push({x:sx,y:c.y,vx:0,vy:-120,life:0.5,max:0.5,color:'#ffd34d',size:4}); flow = Math.min(1, flow + 0.05);
+      }
+    }
+
+    // Powerups
+    for(let i=powerups.length-1;i>=0;i--){
+      const p = powerups[i]; const sx = toScreenX(p.x);
+      if(sx < -60){ powerups.splice(i,1); continue; }
+      if(circleHit(player.x, player.y, player.r, sx, p.y, p.r)){
+        powerups.splice(i,1);
+        if(p.t==='shield'){ shieldTime = 5; audio.slide(300,1000,0.25,0.1); showToast('🛡️ Shield for 5s'); }
+        if(p.t==='heart' && lives<5){ lives += 1; store.hearts = lives; audio.beep(500,0.08,0.15); showToast('❤️ +1 life'); }
+        if(p.t==='boost'){ boostTime = 3; audio.slide(500,1400,0.3,0.12); showToast('⚡ Speed Boost!'); }
+      }
+    }
+
+    // Lead bonus & scoring
+    const gap = Math.max(-300, Math.min(300, worldX - bot.wx));
+    const targetBonus = gap > 0 ? 0.20 : 0; // up to +20% when ahead
+    leadBonus += (targetBonus - leadBonus) * Math.min(1, 4*dt);
+    score += effSpeed * dt * 0.05;
+
+    updateHUD();
+  }
+
+  // World & entities
+  for(const o of obstacles) drawObstacle(o);
+  for(const c of coins) drawCoin(c);
+  for(const p of powerups) drawPowerup(p);
+  updateParticles(dt); drawParticles();
+  player.draw(); bot.draw();
+
+  if(paused && state==='playing'){
+    ctx.save(); ctx.globalAlpha=0.65; ctx.fillStyle='#000'; ctx.fillRect(0,0,W,H); ctx.restore();
+    ctx.fillStyle='#fff'; ctx.font = `${22*dpr}px system-ui`; ctx.textAlign='center'; ctx.fillText('⏸ Paused — Press P to resume', W/2, H/2);
+  }
+  ctx.restore(); requestAnimationFrame(frame);
+}
+
+/* === Init === */
+function init(){ resize(); level = Math.max(1, store.level|0); lives = Math.min(5, Math.max(1, store.hearts|0)) || 3; best = store.best|0; player.y = groundY - player.r; bot.y = groundY - bot.r; updateHUD(); requestAnimationFrame(frame); }
+init();
+</script>
+</body>
+</html>
