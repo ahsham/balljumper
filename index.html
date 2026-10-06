@@ -54,6 +54,7 @@
   }
   button:hover{filter:brightness(1.05)}
   button:active{transform:translateY(1px)}
+  .version-link{display:inline-block; text-decoration:none; appearance:none; border-radius:14px; padding:10px 14px; font-weight:700; background:#e9f5ff; color:var(--ink); box-shadow:0 10px 24px #0000001a, inset 0 -2px 0 #0000000d; cursor:pointer; margin-left:8px;}
   .overlay{ position:fixed; inset:0; display:grid; place-items:center; background:linear-gradient(#00000010, #00000015); backdrop-filter:saturate(120%) blur(2px); }
   .card{ background:#fff; padding:26px 24px; border-radius:18px; box-shadow:0 25px 60px #00000025; max-width:min(92vw, 860px); text-align:left; }
   .title{font-size:clamp(28px, 4.5vw, 42px); margin:0 0 6px 0; letter-spacing:.5px}
@@ -103,7 +104,7 @@
 
 <div class="overlay" id="menu">
   <div class="card">
-    <h1 class="title">🫧 Runaway Ball — Robo-Vac Chase</h1>
+    <h1 class="title">🫧 Runaway Ball — Simple</h1>
     <p class="subtitle">Outrun a mischievous robo-vac. Build <b>Flow</b>, grab ⚡ boosts, and hold <b>→</b> for NOS!</p>
     <div class="instructions">
       <span class="emoji">🕹️</span><div>Jump: <b>Space</b> / <b>↑</b> / Tap</div>
@@ -120,7 +121,8 @@
     <div class="keys">
       <span class="key">Space</span><span class="key">↑</span><span class="key">→ / D (NOS)</span><span class="key">Click / Tap</span>
     </div>
-    <button id="playBtn" style="font-size:18px">▶&nbsp; Play</button>
+    <button id="playBtn" style="font-size:18px">▶&nbsp; Play Simple</button>
+    <a class="version-link" href="robo-rush-v2.html">⚡ Play Robo Rush V2</a>
     <button id="styleBtn">🎨 Unlock ball look (30 🪙)</button>
     <p class="note" id="styleNote">Classic pink ball equipped.</p>
     <p class="note">Progress, coins, and ball looks are saved on this device.</p>
