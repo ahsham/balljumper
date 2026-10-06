@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Jumping Ball Runner — Bot Rival Mode</title>
+<title>Runaway Ball — Robo-Vac Chase</title>
 <style>
   :root{
     --sky-top:#8fd3ff;
@@ -69,19 +69,21 @@
 </head>
 <body>
 <div id="game">
-  <canvas id="canvas" aria-label="Jumping Ball Runner"></canvas>
+  <canvas id="canvas" aria-label="Runaway Ball — Robo-Vac Chase"></canvas>
 </div>
 
 <div class="hud" aria-live="polite">
   <div class="left">
     <div class="badge" id="score">Score: 0</div>
+    <div class="badge" id="tokens">🪙 0</div>
     <div class="badge" id="level">Level 1</div>
     <div class="badge" id="hearts">❤️❤️❤️</div>
-    <div class="badge" id="rival">Bot: —</div>
+    <div class="badge" id="rival">Vacuum: —</div>
   </div>
   <div class="right">
     <div class="badge" id="speed">Speed: 1.0x</div>
     <div class="badge" id="flow">Flow: 0%</div>
+    <div class="badge" id="combo">Combo: x1</div>
     <div class="badge" id="boost">⚡ Boost: —</div>
     <div class="badge" id="nitro">NOS: 100%</div>
     <div class="badge" id="bonus">Lead Bonus: 0%</div>
@@ -101,13 +103,13 @@
 
 <div class="overlay" id="menu">
   <div class="card">
-    <h1 class="title">🎌 Jumping Ball Runner — Bot Rival</h1>
-    <p class="subtitle">Race a bot. Build <b>Flow</b>, grab ⚡ boosts, and hold <b>→</b> for NOS!</p>
+    <h1 class="title">🫧 Runaway Ball — Robo-Vac Chase</h1>
+    <p class="subtitle">Outrun a mischievous robo-vac. Build <b>Flow</b>, grab ⚡ boosts, and hold <b>→</b> for NOS!</p>
     <div class="instructions">
       <span class="emoji">🕹️</span><div>Jump: <b>Space</b> / <b>↑</b> / Tap</div>
       <span class="emoji">➡️</span><div><b>Hold Right Arrow</b> (or <b>D</b>) for NOS burst. Drains, then refills.</div>
-      <span class="emoji">🤖</span><div>Bot: from behind it nudges you forward; from the front it shoves you back.</div>
-      <span class="emoji">💥</span><div>Hit obstacle w/o shield: you lose a life and the <b>bot surges ahead</b>.</div>
+      <span class="emoji">🧹</span><div>Robo-vac: when it gets close, its suction nudges you; jump away or hit NOS!</div>
+      <span class="emoji">💥</span><div>Hit an obstacle without a shield: lose a life and the <b>robo-vac zooms closer</b>.</div>
       <span class="emoji">🌊</span><div><b>Flow</b>: clean play auto-accelerates up to +35%. Hits break flow.</div>
       <span class="emoji">⚡</span><div><b>Boost pickup</b>: +35% speed for 3s. Stacks with Flow, NOS & lead bonus.</div>
       <span class="emoji">🪙</span><div>Coins: +100 points each.</div>
@@ -119,7 +121,9 @@
       <span class="key">Space</span><span class="key">↑</span><span class="key">→ / D (NOS)</span><span class="key">Click / Tap</span>
     </div>
     <button id="playBtn" style="font-size:18px">▶&nbsp; Play</button>
-    <p class="note">Progress (level, lives, best) is saved on this device.</p>
+    <button id="styleBtn">🎨 Unlock ball look (30 🪙)</button>
+    <p class="note" id="styleNote">Classic pink ball equipped.</p>
+    <p class="note">Progress, coins, and ball looks are saved on this device.</p>
   </div>
 </div>
 
@@ -149,15 +153,18 @@ const dpr = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
 let W=0, H=0;
 
 function resize(){
-  W = Math.round(window.innerWidth * dpr);
-  H = Math.round(window.innerHeight * dpr);
-  canvas.width = W; canvas.height = H;
+  // Keep simulation coordinates in CSS pixels on every display.
+  W = window.innerWidth;
+  H = window.innerHeight;
+  canvas.width = Math.round(W * dpr); canvas.height = Math.round(H * dpr);
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   groundY = Math.round(H*0.78);
 }
 window.addEventListener('resize', resize);
 
 /* === UI === */
 const scoreEl = document.getElementById('score');
+const tokensEl = document.getElementById('tokens');
 const levelEl = document.getElementById('level');
 const heartsEl = document.getElementById('hearts');
 const speedEl = document.getElementById('speed');
@@ -167,6 +174,7 @@ const botMarker = document.getElementById('botMarker');
 const rivalEl = document.getElementById('rival');
 const bonusEl = document.getElementById('bonus');
 const flowEl = document.getElementById('flow');
+const comboEl = document.getElementById('combo');
 const boostEl = document.getElementById('boost');
 const nitroEl = document.getElementById('nitro');
 
@@ -183,6 +191,8 @@ const retryBtn = document.getElementById('retryBtn');
 const muteBtn = document.getElementById('muteBtn');
 const pauseBtn = document.getElementById('pauseBtn');
 const toast = document.getElementById('toast');
+const styleBtn = document.getElementById('styleBtn');
+const styleNote = document.getElementById('styleNote');
 
 /* === Audio === */
 let audioMuted=false;
@@ -214,6 +224,12 @@ const store = {
   set hearts(v){ localStorage.setItem('jbr_hearts', String(Math.max(0,Math.min(5,v)))); },
   get best(){ return +localStorage.getItem('jbr_best') || 0; },
   set best(v){ localStorage.setItem('jbr_best', String(v)); },
+  get coins(){ return +localStorage.getItem('jbr_coins') || 0; },
+  set coins(v){ localStorage.setItem('jbr_coins', String(Math.max(0,v))); },
+  get looks(){ return Math.max(1, Math.min(3, +localStorage.getItem('jbr_looks') || 1)); },
+  set looks(v){ localStorage.setItem('jbr_looks', String(Math.max(1,Math.min(3,v)))); },
+  get look(){ return Math.max(0, Math.min(2, +localStorage.getItem('jbr_look') || 0)); },
+  set look(v){ localStorage.setItem('jbr_look', String(Math.max(0,Math.min(2,v)))); },
 };
 
 /* === Game config/state === */
@@ -225,6 +241,7 @@ let level = store.level;
 let lives = store.hearts;
 let score = 0;
 let best = store.best;
+let bankedCoins = store.coins;
 
 const BASE_LENGTH = 5000; // px
 const LENGTH_PER_LEVEL = 900;
@@ -255,22 +272,28 @@ const NITRO_DRAIN = 0.45;     // /s while held
 const NITRO_REGEN = 0.25;     // /s when not held
 const NITRO_MULT = 1.6;       // +60% while held
 let nitroPressed = false;
+let combo = 0;
+let comboTime = 0;
 
-/* === Bot rival === */
+/* === Mischievous robo-vac chaser === */
 const bot = {
   wx: 0,
   vy: 0,
   y: 0,
-  r: 22,
+  r: 26,
   onGround: false,
   rubber: 0.16,   // keeps pressure on
   jumpCooldown: 0,
+  contactCooldown: 0,
   update(dt){
     // Match player's effective speed with rubber-banding on gap
     const lead = (worldX - this.wx);
     const accel = this.rubber * (lead);
     const targetSpeed = Math.max(80, Math.min(MAX_SPEED*1.15, currentEffectiveSpeed() + accel));
     this.wx += targetSpeed * dt;
+    // This is a chase, not a race: the vacuum can get frighteningly close but
+    // never passes the runaway ball.
+    this.wx = Math.min(this.wx, worldX - 70);
 
     // gravity & ground
     this.vy += 2000*dt; this.y += this.vy*dt;
@@ -278,6 +301,7 @@ const bot = {
 
     // look-ahead jump
     this.jumpCooldown = Math.max(0, this.jumpCooldown - dt);
+    this.contactCooldown = Math.max(0, this.contactCooldown - dt);
     const lookAhead = 180;
     for(const o of obstacles){ if(o.x > this.wx && o.x - this.wx < lookAhead){ if(this.onGround && this.jumpCooldown<=0){ this.vy = -740; this.onGround=false; this.jumpCooldown=0.18; } break; } }
   },
@@ -287,11 +311,18 @@ const bot = {
     const shadowY = groundY + 6, air = Math.max(0, groundY - (this.y+this.r)), shw = Math.max(10, 28 - air*0.08);
     ctx.globalAlpha = 0.22; ctx.fillStyle='#000'; ctx.beginPath(); ctx.ellipse(x,shadowY,shw,shw*0.38,0,0,Math.PI*2); ctx.fill();
     ctx.restore();
-    const r=this.r; const g = ctx.createRadialGradient(x-r*0.3, this.y-r*0.4, r*0.1, x, this.y, r);
-    g.addColorStop(0,'#c9d8ff'); g.addColorStop(1,'#4d8bff');
-    ctx.fillStyle=g; ctx.beginPath(); ctx.arc(x,this.y,r,0,Math.PI*2); ctx.fill();
-    ctx.fillStyle='rgba(255,255,255,0.55)'; ctx.beginPath(); ctx.ellipse(x-r*0.2, this.y-r*0.35, r*0.35, r*0.25, -0.5, 0, Math.PI*2); ctx.fill();
-    ctx.fillStyle='#112'; ctx.beginPath(); ctx.arc(x-r*0.26, this.y-r*0.18, r*0.13, 0, Math.PI*2); ctx.fill(); ctx.beginPath(); ctx.arc(x+r*0.26, this.y-r*0.18, r*0.13, 0, Math.PI*2); ctx.fill();
+    const r=this.r;
+    // Its suction cone grows as it gets close: a readable, silly chase warning.
+    const gap=player.x-x;
+    if(gap>0 && gap<230){ ctx.save(); ctx.globalAlpha=(1-gap/230)*0.22; ctx.fillStyle='#9bdcff'; ctx.beginPath(); ctx.moveTo(x+r*.55,this.y-10); ctx.lineTo(player.x-10,player.y-15); ctx.lineTo(player.x-10,player.y+15); ctx.closePath(); ctx.fill(); ctx.restore(); }
+    ctx.save(); ctx.translate(x,this.y);
+    ctx.fillStyle='#171d2b'; ctx.beginPath(); ctx.ellipse(-r*.45,r*.56,r*.3,r*.18,0,0,Math.PI*2); ctx.fill(); ctx.beginPath(); ctx.ellipse(r*.45,r*.56,r*.3,r*.18,0,0,Math.PI*2); ctx.fill();
+    const shell=ctx.createLinearGradient(0,-r,0,r); shell.addColorStop(0,'#d8ebf2'); shell.addColorStop(.48,'#7892a0'); shell.addColorStop(1,'#405260'); ctx.fillStyle=shell; ctx.beginPath(); ctx.ellipse(0,0,r*1.08,r*.72,0,0,Math.PI*2); ctx.fill();
+    ctx.strokeStyle='#283844'; ctx.lineWidth=3; ctx.stroke();
+    ctx.fillStyle='#263641'; ctx.fillRect(r*.72,-r*.22,r*.45,r*.44); ctx.fillStyle='#9de8ff'; ctx.fillRect(r*.94,-r*.11,r*.18,r*.22);
+    ctx.fillStyle='#24303a'; ctx.beginPath(); ctx.arc(-r*.16,-r*.1,r*.37,0,Math.PI*2); ctx.fill(); ctx.fillStyle='#ff5b72'; ctx.beginPath(); ctx.arc(-r*.16,-r*.1,r*.16,0,Math.PI*2); ctx.fill();
+    ctx.fillStyle='rgba(255,255,255,.62)'; ctx.beginPath(); ctx.ellipse(-r*.35,-r*.3,r*.22,r*.1,-.4,0,Math.PI*2); ctx.fill();
+    ctx.restore();
   }
 };
 
@@ -299,31 +330,45 @@ const bot = {
 function RNG(seed){ let s = seed >>> 0; return function(){ s = (1664525 * s + 1013904223) >>> 0; return (s & 0xfffffff) / 0xfffffff; }}
 
 /* === Player === */
+const BALL_LOOKS = [
+  {name:'Classic Pink', light:'#ffc0d4', dark:'#ff4d85', mark:'#751046'},
+  {name:'Sky Pop', light:'#b9efff', dark:'#38a9ff', mark:'#0b4e8c'},
+  {name:'Lime Zing', light:'#ecffb6', dark:'#78cf39', mark:'#326f19'},
+];
 const player = {
   x: 160, y:0, vy:0, r:24,
-  onGround:false, squash:0,
+  onGround:false, squash:0, rotation:0, trailTick:0,
   update(dt){
     this.vy += 2000*dt; this.y += this.vy*dt;
-    if(this.y + this.r >= groundY){ if(!this.onGround && this.vy>200){ audio.beep(200,0.06,0.08); makeDust(this.x, groundY); } this.y = groundY - this.r; this.vy=0; this.onGround=true; } else { this.onGround=false; }
-    if(this.onGround && this.vy===0){ this.squash = Math.min(0.25, this.squash + 4*dt); }
-    this.squash = Math.max(0, this.squash - 2*dt);
+    if(this.y + this.r >= groundY){
+      if(!this.onGround && this.vy>200){ const impact=this.vy; audio.beep(200,0.06,0.08); makeDust(this.x, groundY); this.squash=Math.min(0.55, impact/1500); }
+      this.y = groundY - this.r; this.vy=0; this.onGround=true;
+    } else { this.onGround=false; }
+    this.rotation += (this.onGround ? currentEffectiveSpeed()/this.r : this.vy/this.r*0.28) * dt;
+    this.squash = Math.max(0, this.squash - 3.6*dt);
+    const racing = nitroPressed || boostTime>0 || flow>0.55;
+    this.trailTick -= dt;
+    if(racing && this.trailTick<=0){ particles.push({x:this.x-this.r, y:this.y+6, vx:-120-Math.random()*100, vy:(Math.random()-0.5)*40, life:0.24, max:0.24, color:nitroPressed?'#fff3a3':'#ffd0df', size:3+Math.random()*3}); this.trailTick=0.045; }
   },
   jump(){ if (this.onGround) { this.vy = -750; this.onGround = false; this.squash=0.2; audio.beep(680, 0.1); audio.beep(700,0.08,0.15); this.createParticles?.(3, '#ffffff'); } },
   draw(){
     const x=this.x, y=this.y, r=this.r;
     ctx.save(); const shadowY = groundY + 6, air = Math.max(0, groundY - (y+r)), shw = Math.max(10, 30 - air*0.08); ctx.globalAlpha = 0.25; ctx.fillStyle='#000'; ctx.beginPath(); ctx.ellipse(x,shadowY,shw,shw*0.38,0,0,Math.PI*2); ctx.fill(); ctx.restore();
-    ctx.save(); ctx.translate(x,y); ctx.scale(1+this.squash*0.15, 1-this.squash*0.2); ctx.translate(-x,-y);
-    const g = ctx.createRadialGradient(x-r*0.3, y-r*0.4, r*0.1, x, y, r); g.addColorStop(0,'#ffc0d4'); g.addColorStop(1,'#ff4d85'); ctx.fillStyle=g; ctx.beginPath(); ctx.arc(x,y,r,0,Math.PI*2); ctx.fill();
+    ctx.save(); ctx.translate(x,y); ctx.scale(1+this.squash*0.45, 1-this.squash*0.35); ctx.translate(-x,-y);
+    const look=BALL_LOOKS[store.look], g = ctx.createRadialGradient(x-r*0.3, y-r*0.4, r*0.1, x, y, r); g.addColorStop(0,look.light); g.addColorStop(1,look.dark); ctx.fillStyle=g; ctx.beginPath(); ctx.arc(x,y,r,0,Math.PI*2); ctx.fill();
     ctx.fillStyle='rgba(255,255,255,0.5)'; ctx.beginPath(); ctx.ellipse(x-r*0.2, y-r*0.35, r*0.35, r*0.25, -0.5, 0, Math.PI*2); ctx.fill();
     ctx.fillStyle='#1c153b'; ctx.beginPath(); ctx.arc(x-r*0.28, y-r*0.18, r*0.14, 0, Math.PI*2); ctx.fill(); ctx.beginPath(); ctx.arc(x+r*0.28, y-r*0.18, r*0.14, 0, Math.PI*2); ctx.fill();
     if(shieldTime>0){ ctx.strokeStyle='rgba(120,200,255,0.7)'; ctx.lineWidth=4; ctx.beginPath(); ctx.arc(x,y,r+6,0,Math.PI*2); ctx.stroke(); }
     if(invincTime>0){ ctx.strokeStyle='rgba(255,230,0,0.8)'; ctx.lineWidth=3; ctx.beginPath(); ctx.arc(x,y,r+10,0,Math.PI*2); ctx.stroke(); }
     ctx.restore();
+    // A rotating trio of marks makes horizontal speed legible even on a round ball.
+    ctx.save(); ctx.translate(x,y); ctx.rotate(this.rotation); ctx.strokeStyle=look.mark+'88'; ctx.lineWidth=2.2; ctx.lineCap='round';
+    for(let i=0;i<3;i++){ ctx.rotate(Math.PI*2/3); ctx.beginPath(); ctx.moveTo(r*0.52,-4); ctx.lineTo(r*0.76,2); ctx.stroke(); } ctx.restore();
   }
 };
 
 /* === World art === */
-function drawBackground(){ const hillBase = groundY - 70*dpr; ctx.fillStyle = '#7bd867'; for(let i=-3;i<5;i++){ const cx = (i*W/2) - (worldX*0.4 % (W/2)); ctx.beginPath(); ctx.arc(cx + W/4, hillBase, 140*dpr, Math.PI, 0); ctx.rect(cx, hillBase, W/2, H-hillBase); ctx.fill(); } ctx.fillStyle='#39c172'; ctx.fillRect(0, groundY, W, H-groundY); ctx.fillStyle='#1faa5d'; ctx.fillRect(0, groundY-6*dpr, W, 6*dpr); }
+function drawBackground(){ const hillBase = groundY - 70; ctx.fillStyle='rgba(255,255,255,0.38)'; for(let i=-1;i<5;i++){ const x=(i*260 - worldX*0.12%(260)) + 60, y=75+(i%3)*55; ctx.beginPath(); ctx.arc(x,y,28,0,Math.PI*2); ctx.arc(x+35,y-12,38,0,Math.PI*2); ctx.arc(x+76,y,25,0,Math.PI*2); ctx.fill(); } ctx.fillStyle = '#7bd867'; for(let i=-3;i<5;i++){ const cx = (i*W/2) - (worldX*0.4 % (W/2)); ctx.beginPath(); ctx.arc(cx + W/4, hillBase, 140, Math.PI, 0); ctx.rect(cx, hillBase, W/2, H-hillBase); ctx.fill(); } ctx.fillStyle='#39c172'; ctx.fillRect(0, groundY, W, H-groundY); ctx.fillStyle='#1faa5d'; ctx.fillRect(0, groundY-6, W, 6); }
 
 /* === Particles === */
 function makeDust(x, y){ for(let i=0;i<6;i++){ particles.push({x, y, vx:(Math.random()-0.5)*160, vy:-Math.random()*140, life:0.5, max:0.5, color:'#2ecc71', size:3}); }}
@@ -331,9 +376,9 @@ function updateParticles(dt){ for(let i=particles.length-1;i>=0;i--){ const p = 
 function drawParticles(){ for(const p of particles){ ctx.save(); ctx.globalAlpha = p.life/p.max; ctx.fillStyle=p.color; ctx.beginPath(); ctx.arc(p.x, p.y, p.size, 0, Math.PI*2); ctx.fill(); ctx.restore(); }}
 
 /* === Objects === */
-function drawCoin(c){ ctx.save(); const pulse = 0.9 + 0.1*Math.sin(performance.now()/120); ctx.fillStyle='#ffd34d'; ctx.beginPath(); ctx.arc(toScreenX(c.x), c.y, c.r*pulse, 0, Math.PI*2); ctx.fill(); ctx.strokeStyle='#ad7d00'; ctx.lineWidth=2; ctx.stroke(); ctx.restore(); }
-function drawObstacle(o){ const x = toScreenX(o.x), y=groundY, w=o.w, h=o.h; ctx.fillStyle=o.color; ctx.fillRect(x, y-h, w, h); ctx.strokeStyle='rgba(0,0,0,0.2)'; ctx.lineWidth=2; ctx.strokeRect(x, y-h, w, h); }
-function drawPowerup(p){ const x = toScreenX(p.x); if(p.t==='shield'){ ctx.strokeStyle='rgba(120,200,255,0.9)'; ctx.lineWidth=3; ctx.beginPath(); ctx.arc(x, p.y, p.r, 0, Math.PI*2); ctx.stroke(); } else if(p.t==='heart'){ ctx.fillStyle='#ff5a77'; ctx.beginPath(); const r=p.r; ctx.moveTo(x, p.y); ctx.bezierCurveTo(x-r, p.y-r, x-2*r, p.y+r*0.2, x, p.y+r*1.4); ctx.bezierCurveTo(x+2*r, p.y+r*0.2, x+r, p.y-r, x, p.y); ctx.fill(); } else if(p.t==='boost'){ ctx.save(); ctx.fillStyle='var(--boost)'; ctx.beginPath(); ctx.moveTo(x-6,p.y-12); ctx.lineTo(x+2,p.y-2); ctx.lineTo(x-1,p.y-2); ctx.lineTo(x+6,p.y+10); ctx.lineTo(x-2,p.y+1); ctx.lineTo(x+1,p.y+1); ctx.closePath(); ctx.fill(); ctx.restore(); }}
+function drawCoin(c){ ctx.save(); const t=performance.now()/170, pulse=0.9+0.1*Math.sin(t), spin=Math.max(0.18,Math.abs(Math.sin(t+c.x*.01))); const x=toScreenX(c.x); ctx.translate(x,c.y); ctx.scale(spin,pulse); ctx.fillStyle='#ffd34d'; ctx.beginPath(); ctx.arc(0,0,c.r,0,Math.PI*2); ctx.fill(); ctx.strokeStyle='#ad7d00'; ctx.lineWidth=2; ctx.stroke(); ctx.fillStyle='#fff0a3'; ctx.fillRect(-2,-c.r*.55,4,c.r*1.1); ctx.restore(); }
+function drawObstacle(o){ const x = toScreenX(o.x), y=groundY, w=o.w, h=o.h, wobble=Math.sin(performance.now()/260+o.x)*1.5; ctx.fillStyle=o.color; ctx.fillRect(x, y-h+wobble, w, h-wobble); ctx.strokeStyle='rgba(0,0,0,0.2)'; ctx.lineWidth=2; ctx.strokeRect(x, y-h+wobble, w, h-wobble); }
+function drawPowerup(p){ const x = toScreenX(p.x), y=p.y+Math.sin(performance.now()/240+p.x*.02)*5; if(p.t==='shield'){ ctx.strokeStyle='rgba(120,200,255,0.9)'; ctx.lineWidth=3; ctx.beginPath(); ctx.arc(x, y, p.r, 0, Math.PI*2); ctx.stroke(); ctx.beginPath(); ctx.arc(x,y,p.r+4,performance.now()/400,performance.now()/400+Math.PI*1.25); ctx.stroke(); } else if(p.t==='heart'){ ctx.fillStyle='#ff5a77'; ctx.beginPath(); const r=p.r; ctx.moveTo(x, y); ctx.bezierCurveTo(x-r, y-r, x-2*r, y+r*0.2, x, y+r*1.4); ctx.bezierCurveTo(x+2*r, y+r*0.2, x+r, y-r, x, y); ctx.fill(); } else if(p.t==='boost'){ ctx.save(); ctx.translate(x,y); ctx.scale(1+Math.sin(performance.now()/120)*.08,1+Math.sin(performance.now()/120)*.08); ctx.fillStyle='#ffd34d'; ctx.beginPath(); ctx.moveTo(-6,-12); ctx.lineTo(2,-2); ctx.lineTo(-1,-2); ctx.lineTo(6,10); ctx.lineTo(-2,1); ctx.lineTo(1,1); ctx.closePath(); ctx.fill(); ctx.restore(); }}
 function drawFlag(){ const fx = toScreenX(worldLength); const y=groundY; ctx.fillStyle='#8b5a2b'; ctx.fillRect(fx, y-120, 10, 120); ctx.fillStyle='#ffdd57'; ctx.beginPath(); ctx.moveTo(fx+10, y-110); ctx.lineTo(fx+90, y-90); ctx.lineTo(fx+10, y-70); ctx.closePath(); ctx.fill(); }
 
 /* === Collision helpers === */
@@ -361,17 +406,19 @@ function generateLevel(n){
 }
 
 /* === World <-> Screen === */
-function toScreenX(wx){ return Math.round((wx - worldX) * dpr + player.x); }
+function toScreenX(wx){ return Math.round(wx - worldX + player.x); }
 
 /* === HUD === */
 let leadBonus=0; // 0..0.20
 function updateHUD(){
   const speedMul = speedMultiplier();
   scoreEl.textContent = 'Score: ' + Math.floor(score).toLocaleString();
+  tokensEl.textContent = '🪙 ' + bankedCoins.toLocaleString();
   levelEl.textContent = 'Level ' + level;
   heartsEl.textContent = '❤️'.repeat(lives) + '🤍'.repeat(Math.max(0, 5 - lives));
   speedEl.textContent = 'Speed: ' + ( (worldSpeed/BASE_SPEED) * speedMul ).toFixed(2) + 'x';
   flowEl.textContent = 'Flow: ' + Math.round(flow * 100) + '%';
+  comboEl.textContent = 'Combo: x' + (1 + Math.floor(combo / 5));
   boostEl.textContent = '⚡ Boost: ' + (boostTime>0 ? boostTime.toFixed(1)+'s' : '—');
   nitroEl.textContent = 'NOS: ' + Math.round(nitro*100) + '%';
   best = Math.max(best, Math.floor(score)); bestEl.textContent = 'Best: ' + best.toLocaleString();
@@ -379,13 +426,27 @@ function updateHUD(){
   progressBar.style.width = (prog*100).toFixed(1) + '%';
   const botProg = Math.max(0, Math.min(1, bot.wx / worldLength));
   botMarker.style.left = `calc(${(botProg*100).toFixed(1)}% - 1px)`;
-  const ahead = (worldX - bot.wx) > 0;
-  rivalEl.textContent = 'Bot: ' + (ahead ? '⬅️ behind' : '➡️ ahead');
+  const vacuumGap = Math.max(0, Math.round(worldX - bot.wx));
+  rivalEl.textContent = 'Vacuum: ' + (vacuumGap < 140 ? '🌀 close!' : `${vacuumGap}m back`);
   bonusEl.textContent = 'Lead Bonus: ' + Math.round(leadBonus*100) + '%';
 }
 
 /* === Toast === */
 function showToast(msg){ toast.textContent = msg; toast.style.opacity='1'; setTimeout(()=>{ toast.style.opacity='0'; }, 1700); }
+
+function updateLookShop(){
+  const current=BALL_LOOKS[store.look];
+  if(store.looks < BALL_LOOKS.length){ styleBtn.textContent='🎨 Unlock ball look (30 🪙)'; styleNote.textContent=`${current.name} equipped · ${store.looks}/${BALL_LOOKS.length} looks unlocked`; }
+  else { styleBtn.textContent='🎨 Change ball look'; styleNote.textContent=`${current.name} equipped · all looks unlocked`; }
+}
+function useLookShop(){
+  if(store.looks < BALL_LOOKS.length){
+    if(bankedCoins < 30){ showToast(`Need ${30-bankedCoins} more 🪙`); return; }
+    bankedCoins -= 30; store.coins=bankedCoins; store.looks += 1; store.look = store.looks-1;
+    showToast(`🎉 Unlocked ${BALL_LOOKS[store.look].name}!`);
+  } else { store.look=(store.look+1)%BALL_LOOKS.length; showToast(`🎨 ${BALL_LOOKS[store.look].name}`); }
+  updateLookShop(); updateHUD();
+}
 
 /* === Life & hit handling === */
 function hitObstacle(i){
@@ -395,18 +456,20 @@ function hitObstacle(i){
     for(let j=0;j<10;j++){ particles.push({x:toScreenX(o.x), y:groundY-o.h/2, vx:(Math.random()-0.5)*300, vy:(Math.random()-0.5)*300, life:0.6, max:0.6, color:o.color, size:4}); }
   } else if(invincTime <= 0){
     lives -= 1; store.hearts = lives; audio.thud(); showToast('Ouch! -1 ❤️'); invincTime = 1.2; shake = 10; flow = 0;
-    // on mistake: bot surges ahead, and you get pulled slightly back
-    bot.wx = Math.min(worldLength-10, bot.wx + 260);
+    // On a mistake the robo-vac zips closer, making the next escape tense.
+    bot.wx = Math.min(worldX - 70, bot.wx + 260);
     worldX = Math.max(0, worldX - 180);
-    showToast('🤖 Bot surged ahead!');
+    showToast('🧹 Robo-vac zooms closer!');
     if(lives <= 0){ gameOver(); }
   }
 }
 
 /* === Game flow === */
 function resetRun(){
-  worldX = 0; score = 0; shieldTime = 0; invincTime=0; shake=0; leadBonus=0; flow=0; boostTime=0; nitro=1; nitroPressed=false;
-  bot.wx = -160; bot.y = groundY - bot.r; bot.vy=0;
+  worldX = 0; score = 0; shieldTime = 0; invincTime=0; shake=0; leadBonus=0; flow=0; boostTime=0; nitro=1; nitroPressed=false; combo=0; comboTime=0;
+  player.y = groundY - player.r; player.vy=0; player.onGround=true; player.squash=0; player.rotation=0; player.trailTick=0;
+  bot.wx = -160; bot.y = groundY - bot.r; bot.vy=0; bot.contactCooldown=0;
+  particles.length=0;
   generateLevel(level);
   updateHUD();
 }
@@ -432,6 +495,7 @@ function setPaused(p){ if(state!=='playing') return; paused=p; pauseBtn.textCont
 muteBtn.addEventListener('click', toggleMute);
 pauseBtn.addEventListener('click', ()=> setPaused(!paused));
 playBtn.addEventListener('click', start);
+styleBtn.addEventListener('click', useLookShop);
 nextBtn.addEventListener('click', ()=>{ start(); });
 againBtn.addEventListener('click', ()=>{ level = 1; store.level = level; lives = 3; store.hearts = lives; start(); });
 retryBtn.addEventListener('click', ()=>{ start(); });
@@ -472,20 +536,22 @@ function frame(t){
     // Update entities
     player.update(dt); bot.update(dt);
 
-    // Bot-player bump interactions
+    // Robo-vac suction interactions
     const botX = toScreenX(bot.wx);
     const overlap = (player.r + bot.r) - Math.abs(botX - player.x);
-    if(overlap > 0){
-      if(botX < player.x){ // behind -> push forward
-        const push = 150 * dt * (1 + flow);
-        worldX += push; score += 2; audio.beep(300,0.03,0.06);
-      } else { // front -> push back
-        const push = 220 * dt; worldX = Math.max(0, worldX - push); flow = Math.max(0, flow - 0.15); shake = Math.max(shake, 6); audio.thud();
-      }
+    const verticallyClose = Math.abs(player.y - bot.y) < player.r + bot.r;
+    if(overlap > 0 && verticallyClose && bot.contactCooldown <= 0){
+      bot.contactCooldown = 0.18;
+      // The nozzle catches the ball: it pulls progress back until the player
+      // jumps clear or burns NOS. The vacuum always remains behind.
+      const pull = 145 * dt * (1 + flow);
+      worldX = Math.max(0, worldX - pull); flow = Math.max(0, flow - 0.08);
+      shake = Math.max(shake, 4); audio.beep(180,0.03,0.06);
     }
 
     // Timers
     if(shieldTime>0) shieldTime -= dt; if(invincTime>0) invincTime -= dt; if(boostTime>0) boostTime -= dt;
+    comboTime = Math.max(0, comboTime-dt); if(comboTime===0) combo=0;
 
     // Obstacles
     for(let i=obstacles.length-1;i>=0;i--){
@@ -500,8 +566,9 @@ function frame(t){
       const c = coins[i]; const sx = toScreenX(c.x);
       if(sx < -60) { coins.splice(i,1); continue; }
       if(circleHit(player.x, player.y, player.r, sx, c.y, c.r)){
-        coins.splice(i,1); score += 100; audio.beep(900,0.06,0.14);
+        coins.splice(i,1); combo += 1; comboTime=2.4; const coinValue=100*(1+Math.floor(combo/5)); score += coinValue; bankedCoins += 1; store.coins=bankedCoins; audio.beep(900,0.06,0.14);
         particles.push({x:sx,y:c.y,vx:0,vy:-120,life:0.5,max:0.5,color:'#ffd34d',size:4}); flow = Math.min(1, flow + 0.05);
+        if(combo>0 && combo%5===0){ audio.slide(700,1300,0.14,0.08); showToast(`Combo x${1+Math.floor(combo/5)}! +${coinValue}`); }
       }
     }
 
@@ -519,7 +586,7 @@ function frame(t){
 
     // Lead bonus & scoring
     const gap = Math.max(-300, Math.min(300, worldX - bot.wx));
-    const targetBonus = gap > 0 ? 0.20 : 0; // up to +20% when ahead
+    const targetBonus = Math.max(0, Math.min(0.20, (gap - 100) / 1000)); // earn distance before the full +20%
     leadBonus += (targetBonus - leadBonus) * Math.min(1, 4*dt);
     score += effSpeed * dt * 0.05;
 
@@ -535,13 +602,13 @@ function frame(t){
 
   if(paused && state==='playing'){
     ctx.save(); ctx.globalAlpha=0.65; ctx.fillStyle='#000'; ctx.fillRect(0,0,W,H); ctx.restore();
-    ctx.fillStyle='#fff'; ctx.font = `${22*dpr}px system-ui`; ctx.textAlign='center'; ctx.fillText('⏸ Paused — Press P to resume', W/2, H/2);
+    ctx.fillStyle='#fff'; ctx.font = `22px system-ui`; ctx.textAlign='center'; ctx.fillText('⏸ Paused — Press P to resume', W/2, H/2);
   }
   ctx.restore(); requestAnimationFrame(frame);
 }
 
 /* === Init === */
-function init(){ resize(); level = Math.max(1, store.level|0); lives = Math.min(5, Math.max(1, store.hearts|0)) || 3; best = store.best|0; player.y = groundY - player.r; bot.y = groundY - bot.r; updateHUD(); requestAnimationFrame(frame); }
+function init(){ resize(); level = Math.max(1, store.level|0); lives = Math.min(5, Math.max(1, store.hearts|0)) || 3; best = store.best|0; player.y = groundY - player.r; bot.y = groundY - bot.r; updateLookShop(); updateHUD(); requestAnimationFrame(frame); }
 init();
 </script>
 </body>
